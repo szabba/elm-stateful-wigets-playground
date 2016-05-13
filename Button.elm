@@ -86,8 +86,17 @@ onClick msg (Config cfg) =
 
 
 delay : Time -> Config msg model -> Config msg model
-delay t (Config cfg ) =
+delay t (Config cfg) =
     { cfg | delay = t } |> Config
+
+
+background : String -> Config msg model -> Config msg model
+background color (Config cfg) =
+    let
+        { colors } = cfg
+        newColors = { colors | background = color }
+    in
+        { cfg | colors = newColors } |> Config
 
 
 wrapOnClickMsg : Embedding (Button msg model) msg model -> Config msg model -> msg -> msg

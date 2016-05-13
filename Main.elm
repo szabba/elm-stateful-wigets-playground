@@ -3,6 +3,7 @@ module Main exposing ( .. )
 
 import Html exposing (Html, Attribute)
 import Html.App as App
+import Time
 
 import Button exposing (Button)
 import Embedding exposing ( Embedding, OpaqueUpdate )
@@ -78,7 +79,9 @@ view (Counter counter) =
     Html.div
         []
         [ Button.view counter.downButton
-            [ Button.onClick Decrement ]
+            [ Button.onClick Decrement
+            , Button.delay <| 0.1 * Time.second
+            ]
             [ Html.text "-" ]
         , Html.text <| toString counter.count
         , Button.view counter.upButton
