@@ -1,6 +1,6 @@
 module Button exposing
     ( Button, new, view
-    , Config, onClick
+    , Config, delay, onClick
     )
 
 
@@ -83,6 +83,11 @@ onClick : msg -> Config msg model -> Config msg model
 onClick msg (Config cfg) =
     { cfg | onClick = \embedding cfg -> wrapOnClickMsg embedding cfg msg }
     |> Config
+
+
+delay : Time -> Config msg model -> Config msg model
+delay t (Config cfg ) =
+    { cfg | delay = t } |> Config
 
 
 wrapOnClickMsg : Embedding (Button msg model) msg model -> Config msg model -> msg -> msg
