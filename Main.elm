@@ -1,11 +1,12 @@
 module Main exposing ( .. )
 
 
-import Html exposing (Html, Attribute)
+import AnimationFrame
+import Html exposing ( Html, Attribute )
 import Html.App as App
-import Time
+import Time exposing ( Time )
 
-import Button exposing (Button)
+import Button exposing ( Button )
 import Embedding exposing ( Embedding, OpaqueUpdate )
 
 
@@ -15,7 +16,8 @@ main =
         { init = (init, Cmd.none)
         , update = update
         , view = view
-        , subscriptions = always Sub.none
+        , subscriptions =
+            always <| AnimationFrame.diffs Animate
         }
 
 
@@ -51,7 +53,8 @@ downButtonL f (Counter counter) =
 
 
 type Message
-    = Decrement
+    = Animate Time
+    | Decrement
     | Increment
     | Opaque (OpaqueUpdate Message Counter)
 
@@ -67,6 +70,21 @@ update msg model =
                 { inner | count = inner.count - 1 } |> withoutEffects
             Increment ->
                 { inner | count = inner.count + 1 } |> withoutEffects
+            Animate dt ->
+                let
+                    _ = Debug.log "requestAnimationFrame delta" dt
+                    upButton =
+                        inner.upButton
+                        |> Button.animate dt
+                    downButton =
+                        inner.downButton
+                        |> Button.animate dt
+                in
+                    { inner
+                    | upButton = upButton
+                    , downButton = downButton
+                    }
+                    |> withoutEffects
             Opaque f ->
                 model |> f
 

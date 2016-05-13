@@ -1,6 +1,7 @@
 module Button exposing
-    ( Button, new, view
-    , Config, delay, onClick
+    ( Button, new
+    , update, animate
+    , view , Config, delay, onClick, background
     )
 
 
@@ -9,8 +10,9 @@ import Html.Attributes as Attributes
 import Html.Events as Events
 import Time exposing ( Time )
 
-import Platform.Cmd.Extra as XCmd
+import Animation exposing ( Animation )
 import Embedding exposing ( Embedding, OpaqueUpdate )
+import Platform.Cmd.Extra as XCmd
 
 
 -- MODEL
@@ -18,7 +20,7 @@ import Embedding exposing ( Embedding, OpaqueUpdate )
 
 type Button msg model
     = Button
-        { state : State
+        { animation : Animation State
         , embedding : Embedding (Button msg model) msg model
         }
 
@@ -34,7 +36,7 @@ new
     -> Button msg model
 new wrapOpaque liftUpdate =
     Button
-        { state = NotFlashing
+        { animation = Animation.forever NotFlashing
         , embedding = { liftUpdate = liftUpdate
                       , wrapOpaque = wrapOpaque
                       }
@@ -45,17 +47,32 @@ new wrapOpaque liftUpdate =
 
 
 type Message
-    = StartFlashing
-    | StopFlashing
+    = StartFlashing Time
 
 
 update : Message -> Button msg model -> Button msg model
 update msg (Button btn) =
     case msg of
-        StartFlashing ->
-            { btn | state = Flashing } |> Button
-        StopFlashing ->
-            { btn | state = NotFlashing } |> Button
+        StartFlashing delay ->
+            { btn | animation = flash delay } |> Button
+
+
+animate : Time -> Button msg model -> Button msg model
+animate dt (Button btn) =
+    let
+        { animation } = btn
+
+        shiftedAnimation =
+            animation |> Animation.runFor dt
+    in
+        Button { btn | animation = shiftedAnimation }
+
+
+
+flash : Time -> Animation State
+flash delay =
+    Animation.for delay (Animation.forever Flashing)
+    <| Animation.forever NotFlashing
 
 
 -- VIEW
@@ -68,21 +85,43 @@ view
     -> Html msg
 view (Button btn) configDelta children =
     let
-        { embedding, state } = btn
+        { embedding, animation } = btn
+
+        state = animation |> Animation.now
 
         attributes =
             configDelta
             |> List.foldl (<|) defaultConfig
             |> attributesForConfig embedding state
-
     in
         Html.button attributes children
 
 
 onClick : msg -> Config msg model -> Config msg model
-onClick msg (Config cfg) =
-    { cfg | onClick = \embedding cfg -> wrapOnClickMsg embedding cfg msg }
+onClick userMsg (Config cfg) =
+    { cfg | onClick = wrapOnClickMsg <| Just userMsg }
     |> Config
+
+
+wrapOnClickMsg
+    :  Maybe msg
+    -> Embedding (Button msg model) msg model
+    -> Config msg model
+    -> msg
+wrapOnClickMsg userMsg embedding config =
+    let
+        (Config { delay }) = config
+
+        sendUserMsg =
+            userMsg
+            |> Maybe.map XCmd.wrap
+            |> Maybe.withDefault Cmd.none
+
+        wrappedMessage =
+            update (StartFlashing delay)
+            |> Embedding.updateToMessage embedding [ sendUserMsg ]
+    in
+        wrappedMessage
 
 
 delay : Time -> Config msg model -> Config msg model
@@ -97,22 +136,6 @@ background color (Config cfg) =
         newColors = { colors | background = color }
     in
         { cfg | colors = newColors } |> Config
-
-
-wrapOnClickMsg : Embedding (Button msg model) msg model -> Config msg model -> msg -> msg
-wrapOnClickMsg embedding (Config { delay }) msg =
-    let
-        sendUserMsg = msg |> XCmd.wrap
-
-        sendDelayedMsg =
-            update StopFlashing
-            |> Embedding.updateToMessage embedding []
-            |> XCmd.delay delay
-
-        cmds = [ sendUserMsg, sendDelayedMsg ]
-    in
-        update StartFlashing
-        |> Embedding.updateToMessage embedding cmds
 
 
 attributesForConfig
@@ -165,8 +188,5 @@ defaultConfig =
                    , flash = "#BFFF00"
                    }
         , delay = 0.5 * Time.second
-        , onClick = \embedding cfg ->
-            identity
-            |> Embedding.updateToMessage embedding []
-            |> wrapOnClickMsg embedding cfg
+        , onClick = wrapOnClickMsg Nothing
         }
