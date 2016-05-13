@@ -54,7 +54,7 @@ subscriptions (Button { subscription }) = subscription
 
 type Message
     = Animate Time
-    | StartFlashing Time
+    | StartClickFlash Time
 
 
 update : Message -> Button msg model -> Button msg model
@@ -73,7 +73,7 @@ update msg (Button btn) =
     in
         case msg of
 
-            StartFlashing delay ->
+            StartClickFlash delay ->
                 btn |> startAnimation (flash delay)
 
             Animate dt ->
@@ -131,20 +131,28 @@ onClick userMsg (Config cfg) =
 
 wrapOnClickMsg
     :  Maybe msg
-    -> Embedding (Button msg model) msg model
     -> Config msg model
+    -> Embedding (Button msg model) msg model
     -> msg
-wrapOnClickMsg userMsg embedding config =
-    let
-        (Config { delay }) = config
+wrapOnClickMsg =
+    wrapMsg <| \(Config { delay }) -> update (StartClickFlash delay)
 
+
+wrapMsg
+    :  (Config msg model -> Button msg model -> Button msg model)
+    -> Maybe msg
+    -> Config msg model
+    -> Embedding (Button msg model) msg model
+    -> msg
+wrapMsg update userMsg config embedding =
+    let
         sendUserMsg =
             userMsg
             |> Maybe.map XCmd.wrap
             |> Maybe.withDefault Cmd.none
 
         wrappedMessage =
-            update (StartFlashing delay)
+            update config
             |> Embedding.updateToMessage embedding [ sendUserMsg ]
     in
         wrappedMessage
@@ -187,7 +195,7 @@ attributesForConfig embedding state cfg =
                 , ( "font-weight", "bold" )
                 ]
     in
-        [ Events.onClick <| onClick embedding cfg
+        [ Events.onClick <| wrapOnClickMsg Nothing cfg embedding
         , styles
         ]
 
@@ -200,8 +208,8 @@ type Config msg model
                    }
         , delay : Time
         , onClick
-            :  Embedding (Button msg model) msg model
-            -> Config msg model
+            :  Config msg model
+            -> Embedding (Button msg model) msg model
             -> msg
         }
 
