@@ -19,13 +19,13 @@ type Button msg model
                   , text : String
                   , flash : String
                   }
-        , state : ButtonState
+        , state : State
         , delay : Time
         , embedding : Embedding (Button msg model) msg model
         }
 
 
-type ButtonState
+type State
     = Flashing
     | NotFlashing
 
@@ -51,12 +51,12 @@ new wrapOpaque liftUpdate =
 -- UPDATE
 
 
-type ButtonMessage
+type Message
     = StartFlashing
     | StopFlashing
 
 
-update : ButtonMessage -> Button msg model -> Button msg model
+update : Message -> Button msg model -> Button msg model
 update msg (Button btn) =
     case msg of
         StartFlashing ->
