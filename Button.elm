@@ -1,6 +1,6 @@
 module Button exposing
     ( Button, new, update, subscriptions
-    , view, Config, delay, onClick, background
+    , view, Config, delay, onClick, onHover, background
     )
 
 
@@ -27,7 +27,8 @@ type Button msg model
 
 
 type State
-    = Flashing
+    = Flash
+    | HoverFlash
     | NotFlashing
 
 
@@ -55,6 +56,8 @@ subscriptions (Button { subscription }) = subscription
 type Message
     = Animate Time
     | StartClickFlash Time
+    | Hover Time
+    | Unhover
 
 
 update : Message -> Button msg model -> Button msg model
@@ -75,6 +78,12 @@ update msg (Button btn) =
 
             StartClickFlash delay ->
                 btn |> startAnimation (flash delay)
+
+            Hover delay ->
+                btn |> startAnimation (hoverFlash delay)
+
+            Unhover ->
+                btn |> startAnimation (Animation.forever NotFlashing)
 
             Animate dt ->
                 let
@@ -97,8 +106,15 @@ update msg (Button btn) =
 
 flash : Time -> Animation State
 flash delay =
-    Animation.for delay (Animation.forever Flashing)
+    Animation.for (delay / 10) (Animation.forever NotFlashing)
+    <| Animation.for delay (Animation.forever Flash)
     <| Animation.forever NotFlashing
+
+
+hoverFlash : Time -> Animation State
+hoverFlash delay  =
+    Animation.for delay (Animation.forever HoverFlash)
+    <| Animation.forever Flash
 
 
 -- VIEW
@@ -129,6 +145,12 @@ onClick userMsg (Config cfg) =
     |> Config
 
 
+onHover : msg -> Config msg model -> Config msg model
+onHover userMsg (Config cfg) =
+    { cfg | onHover = wrapOnHoverMsg <| Just userMsg }
+    |> Config
+
+
 wrapOnClickMsg
     :  Maybe msg
     -> Config msg model
@@ -136,6 +158,24 @@ wrapOnClickMsg
     -> msg
 wrapOnClickMsg =
     wrapMsg <| \(Config { delay }) -> update (StartClickFlash delay)
+
+
+wrapOnHoverMsg
+    :  Maybe msg
+    -> Config msg model
+    -> Embedding (Button msg model) msg model
+    -> msg
+wrapOnHoverMsg =
+    wrapMsg <| \(Config { delay }) -> update (Hover delay)
+
+
+wrapOnLeaveMsg
+    :  Maybe msg
+    -> Config msg model
+    -> Embedding (Button msg model) msg model
+    -> msg
+wrapOnLeaveMsg =
+    wrapMsg <| \(Config { delay }) -> update Unhover
 
 
 wrapMsg
@@ -179,13 +219,15 @@ attributesForConfig
     -> List (Attribute msg)
 attributesForConfig embedding state cfg =
     let
-        (Config { colors, onClick }) = cfg
+        (Config { colors, onClick, onHover }) = cfg
 
         backgroundColor =
             case state of
                 NotFlashing ->
                     colors.background
-                Flashing ->
+                HoverFlash ->
+                    colors.hoverFlash
+                Flash ->
                     colors.flash
 
         styles =
@@ -195,7 +237,9 @@ attributesForConfig embedding state cfg =
                 , ( "font-weight", "bold" )
                 ]
     in
-        [ Events.onClick <| wrapOnClickMsg Nothing cfg embedding
+        [ Events.onClick <| onClick cfg embedding
+        , Events.onMouseEnter <| onHover cfg embedding
+        , Events.onMouseLeave <| wrapOnLeaveMsg Nothing cfg embedding
         , styles
         ]
 
@@ -204,10 +248,15 @@ type Config msg model
     = Config
         { colors : { background : String
                    , flash : String
+                   , hoverFlash : String
                    , text : String
                    }
         , delay : Time
         , onClick
+            :  Config msg model
+            -> Embedding (Button msg model) msg model
+            -> msg
+        , onHover
             :  Config msg model
             -> Embedding (Button msg model) msg model
             -> msg
@@ -220,7 +269,9 @@ defaultConfig =
         { colors = { background = "#77DD77"
                    , text = "#FFFFFF"
                    , flash = "#BFFF00"
+                   , hoverFlash = "#FFFF99"
                    }
         , delay = 0.5 * Time.second
         , onClick = wrapOnClickMsg Nothing
+        , onHover = wrapOnHoverMsg Nothing
         }
