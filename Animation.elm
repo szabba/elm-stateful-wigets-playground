@@ -1,6 +1,6 @@
 module Animation exposing
     ( Animation
-    , now, runFor
+    , now, runFor, done
     , forever, interpolate
     , for, map, andMap
     )
@@ -11,7 +11,7 @@ module Animation exposing
 It's not tied to any particular graphics API, it can describe any time-evolving
 values.
 
-@docs Animation, now, runFor
+@docs Animation, now, runFor, done
 
 # Simple animations
 @docs forever, interpolate
@@ -31,7 +31,7 @@ Animations do not remember the past and they don't permit time travel!
 
 -}
 type Animation a
-    = Animation (Time -> (a, Animation a))
+    = Animation a (Maybe (Time -> Animation a))
 
 
 {-| Runs an animation for the given time. The results are the value after the
@@ -42,17 +42,40 @@ animation is not a time machine.
 
 -}
 runFor : Time -> Animation a -> Animation a
-runFor t (Animation consume) =
-    (if t > 0 then t else 0)
-    |> consume
-    |> snd
+runFor t anim =
+    let (Animation _ future) = anim
+    in
+        case future of
+            Nothing ->
+                anim
+            Just consumeTime ->
+                if t < 0 then
+                    anim
+                else
+                    t |> consumeTime
+
 
 {-| Retrieves the current value of the Animation.
 
 -}
 now : Animation a -> a
-now (Animation consume) =
-    0 |> consume |> fst
+now (Animation v _) =
+    v
+
+
+{-| Checks whether the animation has "settled down" -- ie, all it's future states
+will be the same as the current one.
+
+*CAUTION:* It's possible to construct an Animation that will settle down long
+before `done` returns `True`. However, for every animation it will evantually
+return `True`.
+
+-}
+done : Animation a -> Bool
+done (Animation _ future) =
+    future
+    |> Maybe.map (always False)
+    |> Maybe.withDefault True
 
 
 {-| Creates an animation that will always return the given value.
@@ -64,7 +87,7 @@ for all `x` and `t`.
 -}
 forever : a -> Animation a
 forever v =
-    Animation <| \_ -> (v, forever v)
+    Animation v Nothing
         -- Don't try to put `always` in here, it will cause infinite recursion.
 
 
@@ -77,10 +100,7 @@ for all `f` and `dt`.
 -}
 interpolate : (Time -> a) -> Animation a
 interpolate f =
-    Animation <| \dt ->
-        ( f dt
-        , interpolate <| \t -> f (t + dt)
-        )
+    Animation (f 0) (Just <| flip runFor <| interpolate f)
 
 
 {-| Uses the first animation for the specified time and then switches to the
@@ -100,18 +120,12 @@ With a negative `t` you'll get
 
 -}
 for : Time -> Animation a -> Animation a -> Animation a
-for t (Animation consume) finally =
-    Animation <| \dt ->
+for t anim finally =
+    Animation (now anim) <| Just <| \dt ->
         if dt < t then
-            let
-                (now, future) = dt |> consume
-                next = for (t - dt) (Animation consume) finally
-            in
-                ( now , next )
+            for (t - dt) anim finally
         else
-            let (Animation consumeFinally) = finally
-            in
-                dt |> consumeFinally
+            runFor (dt - t) finally
 
 
 {-| Transform the values produced by an animation with some function.
@@ -126,11 +140,9 @@ for all `f` and `g`.
 
 -}
 map : (a -> b) -> Animation a -> Animation b
-map f (Animation consume) =
-    Animation <| \dt ->
-        let (now, future) = dt |> consume
-        in
-            ( f now, map f future )
+map f anim =
+    Animation (f <| now anim) <| Just <| \dt ->
+        map f <| runFor dt anim
 
 
 {-| Allows you to map animations over a multiple argument function.
@@ -139,10 +151,18 @@ map f (Animation consume) =
 
 -}
 andMap : Animation (a -> b) -> Animation a -> Animation b
-andMap (Animation consumeF) (Animation consumeX) =
-    Animation <| \dt ->
-        let
-            (f, futureF) = dt |> consumeF
-            (x, futureX) = dt |> consumeX
-        in
-            ( f x, andMap futureF futureX )
+andMap (Animation f futureF) (Animation x futureX) =
+    Animation (f x) <| Just <| \dt ->
+        case (futureF, futureX) of
+
+            (Nothing, Nothing) ->
+                Animation (f x) Nothing
+
+            (Just fNext, Nothing) ->
+                (fNext dt) `andMap` (forever x)
+
+            (Nothing, Just xNext) ->
+                (forever f) `andMap` (xNext dt)
+
+            (Just fNext, Just xNext) ->
+                (fNext dt) `andMap` (xNext dt)

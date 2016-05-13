@@ -16,8 +16,7 @@ main =
         { init = (init, Cmd.none)
         , update = update
         , view = view
-        , subscriptions =
-            always <| AnimationFrame.diffs Animate
+        , subscriptions = subscriptions
         }
 
 
@@ -53,10 +52,17 @@ downButtonL f (Counter counter) =
 
 
 type Message
-    = Animate Time
-    | Decrement
+    = Decrement
     | Increment
     | Opaque (OpaqueUpdate Message Counter)
+
+
+subscriptions : Counter -> Sub Message
+subscriptions (Counter { upButton, downButton }) =
+    Sub.batch
+        [ Button.subscriptions upButton
+        , Button.subscriptions downButton
+        ]
 
 
 update : Message -> Counter -> (Counter, Cmd Message)
@@ -68,23 +74,10 @@ update msg model =
         case msg of
             Decrement ->
                 { inner | count = inner.count - 1 } |> withoutEffects
+
             Increment ->
                 { inner | count = inner.count + 1 } |> withoutEffects
-            Animate dt ->
-                let
-                    _ = Debug.log "requestAnimationFrame delta" dt
-                    upButton =
-                        inner.upButton
-                        |> Button.animate dt
-                    downButton =
-                        inner.downButton
-                        |> Button.animate dt
-                in
-                    { inner
-                    | upButton = upButton
-                    , downButton = downButton
-                    }
-                    |> withoutEffects
+
             Opaque f ->
                 model |> f
 
