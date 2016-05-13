@@ -1,4 +1,7 @@
-module Button exposing ( Button, new, view, onClick )
+module Button exposing
+    ( Button, new, view
+    , Config, onClick
+    )
 
 
 import Html exposing ( Html, Attribute )
@@ -15,12 +18,7 @@ import Embedding exposing ( Embedding, OpaqueUpdate )
 
 type Button msg model
     = Button
-        { color : { background : String
-                  , text : String
-                  , flash : String
-                  }
-        , state : State
-        , delay : Time
+        { state : State
         , embedding : Embedding (Button msg model) msg model
         }
 
@@ -36,12 +34,7 @@ new
     -> Button msg model
 new wrapOpaque liftUpdate =
     Button
-        { color = { background = "#77DD77"
-                  , text = "#FFFFFF"
-                  , flash = "#BFFF00"
-                  }
-        , state = NotFlashing
-        , delay = 0.5 * Time.second
+        { state = NotFlashing
         , embedding = { liftUpdate = liftUpdate
                       , wrapOpaque = wrapOpaque
                       }
@@ -70,58 +63,96 @@ update msg (Button btn) =
 
 view
     :  Button msg model
-    -> List (Button msg model -> Attribute msg)
+    -> List (Config msg model -> Config msg model)
     -> List (Html msg)
     -> Html msg
-view (Button btn) customAttrs children =
+view (Button btn) configDelta children =
     let
-        { embedding } = btn
+        { embedding, state } = btn
 
-        defaultOnClick btn =
-            let
-                noopMessage =
-                    identity
-                    |> Embedding.updateToMessage embedding []
-            in
-                btn |> onClick noopMessage
+        attributes =
+            configDelta
+            |> List.foldl (<|) defaultConfig
+            |> attributesForConfig embedding state
 
-        backgroundColor btn =
-            case btn.state of
-                  Flashing ->
-                      btn.color.flash
-                  NotFlashing ->
-                      btn.color.background
-
-        styles (Button btn) =
-            Attributes.style
-                [ ( "color", btn.color.text )
-                , ( "background", btn |> backgroundColor )
-                , ( "font-weight", "bold" )
-                ]
-
-        defaultAttrs = [ defaultOnClick, styles ]
-
-        allAttrs =
-            defaultAttrs `List.append` customAttrs
-            |> List.map (\f -> f <| Button btn)
     in
-        Html.button allAttrs children
+        Html.button attributes children
 
 
-onClick : msg -> Button msg model -> Attribute msg
-onClick msg (Button btn) =
+onClick : msg -> Config msg model -> Config msg model
+onClick msg (Config cfg) =
+    { cfg | onClick = \embedding cfg -> wrapOnClickMsg embedding cfg msg }
+    |> Config
+
+
+wrapOnClickMsg : Embedding (Button msg model) msg model -> Config msg model -> msg -> msg
+wrapOnClickMsg embedding (Config { delay }) msg =
     let
-        { embedding } = btn
+        sendUserMsg = msg |> XCmd.wrap
 
         sendDelayedMsg =
             update StopFlashing
             |> Embedding.updateToMessage embedding []
-            |> XCmd.delay btn.delay
+            |> XCmd.delay delay
 
-        sendUserMsg = msg |> XCmd.wrap
+        cmds = [ sendUserMsg, sendDelayedMsg ]
     in
         update StartFlashing
-        |> Embedding.updateToMessage
-            embedding
-            [ sendUserMsg , sendDelayedMsg ]
-        |> Events.onClick
+        |> Embedding.updateToMessage embedding cmds
+
+
+attributesForConfig
+    :  Embedding (Button msg model) msg model
+    -> State
+    -> Config msg model
+    -> List (Attribute msg)
+attributesForConfig embedding state cfg =
+    let
+        (Config { colors, onClick }) = cfg
+
+        backgroundColor =
+            case state of
+                NotFlashing ->
+                    colors.background
+                Flashing ->
+                    colors.flash
+
+        styles =
+            Attributes.style
+                [ ( "color", colors.text )
+                , ( "background", backgroundColor )
+                , ( "font-weight", "bold" )
+                ]
+    in
+        [ Events.onClick <| onClick embedding cfg
+        , styles
+        ]
+
+
+type Config msg model
+    = Config
+        { colors : { background : String
+                   , flash : String
+                   , text : String
+                   }
+        , delay : Time
+        , onClick
+            :  Embedding (Button msg model) msg model
+            -> Config msg model
+            -> msg
+        }
+
+
+defaultConfig : Config msg model
+defaultConfig =
+    Config
+        { colors = { background = "#77DD77"
+                   , text = "#FFFFFF"
+                   , flash = "#BFFF00"
+                   }
+        , delay = 0.5 * Time.second
+        , onClick = \embedding cfg ->
+            identity
+            |> Embedding.updateToMessage embedding []
+            |> wrapOnClickMsg embedding cfg
+        }
