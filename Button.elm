@@ -59,37 +59,40 @@ type Message
 
 update : Message -> Button msg model -> Button msg model
 update msg (Button btn) =
-    case msg of
-
-        StartFlashing delay ->
+    let
+        startAnimation anim btn =
             let
                 newSubscription =
                     AnimationFrame.diffs <| \dt ->
                         Animate dt
-                        |> Debug.log "animation delta"
                         |> update
                         |> Embedding.updateToMessage btn.embedding []
             in
-                { btn | animation = flash delay, subscription = newSubscription }
+                { btn | animation = anim, subscription = newSubscription }
                 |> Button
+    in
+        case msg of
 
-        Animate dt ->
-            let
-                { animation, subscription } = btn
+            StartFlashing delay ->
+                btn |> startAnimation (flash delay)
 
-                shiftedAnimation =
-                    animation
-                    |> Animation.runFor dt
+            Animate dt ->
+                let
+                    { animation, subscription } = btn
 
-                newSubscription =
-                    if Animation.done shiftedAnimation then
-                        Sub.none
-                    else
-                        subscription
+                    shiftedAnimation =
+                        animation
+                        |> Animation.runFor dt
 
-            in
-                { btn | animation = shiftedAnimation , subscription = newSubscription }
-                |> Button
+                    newSubscription =
+                        if Animation.done shiftedAnimation then
+                            Sub.none
+                        else
+                            subscription
+
+                in
+                    { btn | animation = shiftedAnimation , subscription = newSubscription }
+                    |> Button
 
 
 flash : Time -> Animation State
