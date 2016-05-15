@@ -91,16 +91,17 @@ forever v =
         -- Don't try to put `always` in here, it will cause infinite recursion.
 
 
-{-| Creates an animation that's a simple function of time.
-
-    runFor dt (interpolate f) == (f t, interpolate <| \t -> f (t + dt))
-
-for all `f` and `dt`.
+{-| Creates an animation that's a simple function of time (on a bounded
+interval).
 
 -}
-interpolate : (Time -> a) -> Animation a
-interpolate f =
-    Animation (f 0) (Just <| flip runFor <| interpolate f)
+interpolate : Time -> (Time -> a) -> Animation a
+interpolate t f =
+    Animation (f 0) <| Just <| \dt ->
+        if dt < t then
+            interpolate (t - dt) (flip (-) dt >> f)
+        else
+            forever (f t)
 
 
 {-| Uses the first animation for the specified time and then switches to the
