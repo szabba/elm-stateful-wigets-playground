@@ -19,7 +19,7 @@ import Embedding exposing ( Embedding, OpaqueUpdate )
 
 type Button msg model
     = Button
-        { animation : Animation State
+        { state : Animation.State State
         , subscription : Sub msg
         , embedding : Embedding (Button msg model) msg model
         }
@@ -37,7 +37,7 @@ new
     -> Button msg model
 new wrapOpaque liftUpdate =
     Button
-        { animation = Animation.forever NotFlashing
+        { state = Animation.Done NotFlashing
         , subscription = Sub.none
         , embedding = { liftUpdate = liftUpdate
                       , wrapOpaque = wrapOpaque
@@ -62,7 +62,7 @@ type Message
 update : Message -> Button msg model -> Button msg model
 update msg (Button btn) =
     let
-        startAnimation anim btn =
+        startAnimation anim ({ embedding } as btn) =
             let
                 newSubscription =
                     AnimationFrame.diffs <| \dt ->
@@ -70,7 +70,10 @@ update msg (Button btn) =
                         |> update
                         |> Embedding.updateToMessage btn.embedding []
             in
-                { btn | animation = anim, subscription = newSubscription }
+                { btn
+                | state = Animation.Continuing anim
+                , subscription = newSubscription
+                }
                 |> Button
     in
         case msg of
@@ -82,38 +85,39 @@ update msg (Button btn) =
                 btn |> startAnimation (hoverFlash delay)
 
             Unhover ->
-                btn |> startAnimation (Animation.forever NotFlashing)
+                btn |> startAnimation (Animation.immediately NotFlashing)
 
             Animate dt ->
                 let
-                    { animation, subscription } = btn
+                    { state, subscription } = btn
 
-                    shiftedAnimation =
-                        animation
-                        |> Animation.runFor dt
+                    newState =
+                        Animation.runState dt state
 
                     newSubscription =
-                        if Animation.done shiftedAnimation then
+                        if Animation.isDone state then
                             Sub.none
                         else
                             subscription
-
                 in
-                    { btn | animation = shiftedAnimation , subscription = newSubscription }
+                    { btn | state = newState , subscription = newSubscription }
                     |> Button
 
 
 flash : Time -> Animation State
 flash delay =
-    Animation.for (delay / 10) (Animation.forever NotFlashing)
-    <| Animation.for delay (Animation.forever Flash)
-    <| Animation.forever NotFlashing
+    Animation.map (always NotFlashing) (Animation.interval (delay / 10))
+        `Animation.append`
+    Animation.map (always Flash) (Animation.interval delay)
+        `Animation.append`
+    Animation.immediately NotFlashing
 
 
 hoverFlash : Time -> Animation State
 hoverFlash delay  =
-    Animation.for delay (Animation.forever HoverFlash)
-    <| Animation.forever Flash
+    Animation.map (always HoverFlash) (Animation.interval delay)
+        `Animation.append`
+    Animation.immediately Flash
 
 
 -- VIEW
@@ -126,14 +130,14 @@ view
     -> Html msg
 view (Button btn) configDelta children =
     let
-        { embedding, animation } = btn
+        { embedding, state } = btn
 
-        state = animation |> Animation.now
+        buttonState = Animation.sampleState state
 
         attributes =
             configDelta
             |> List.foldl (<|) defaultConfig
-            |> attributesForConfig embedding state
+            |> attributesForConfig embedding buttonState
     in
         Html.button attributes children
 
