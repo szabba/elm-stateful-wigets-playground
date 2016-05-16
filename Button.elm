@@ -1,5 +1,5 @@
 module Button exposing
-    ( Button, new, update, subscriptions
+    ( Button, new, subscriptions
     , view, Config, delay, onClick, onHover, background
     )
 
@@ -12,7 +12,6 @@ import Time exposing ( Time )
 
 import Animation exposing ( Animation )
 import Embedding exposing ( Embedding, OpaqueUpdate )
-import Platform.Cmd.Extra as XCmd
 
 
 -- MODEL
@@ -157,7 +156,7 @@ wrapOnClickMsg
     -> Embedding (Button msg model) msg model
     -> msg
 wrapOnClickMsg =
-    wrapMsg <| \(Config { delay }) -> update (StartClickFlash delay)
+    Embedding.wrapMsg <| \(Config { delay }) -> update (StartClickFlash delay)
 
 
 wrapOnHoverMsg
@@ -166,7 +165,7 @@ wrapOnHoverMsg
     -> Embedding (Button msg model) msg model
     -> msg
 wrapOnHoverMsg =
-    wrapMsg <| \(Config { delay }) -> update (Hover delay)
+    Embedding.wrapMsg <| \(Config { delay }) -> update (Hover delay)
 
 
 wrapOnLeaveMsg
@@ -175,27 +174,7 @@ wrapOnLeaveMsg
     -> Embedding (Button msg model) msg model
     -> msg
 wrapOnLeaveMsg =
-    wrapMsg <| \(Config { delay }) -> update Unhover
-
-
-wrapMsg
-    :  (Config msg model -> Button msg model -> Button msg model)
-    -> Maybe msg
-    -> Config msg model
-    -> Embedding (Button msg model) msg model
-    -> msg
-wrapMsg update userMsg config embedding =
-    let
-        sendUserMsg =
-            userMsg
-            |> Maybe.map XCmd.wrap
-            |> Maybe.withDefault Cmd.none
-
-        wrappedMessage =
-            update config
-            |> Embedding.updateToMessage embedding [ sendUserMsg ]
-    in
-        wrappedMessage
+    Embedding.wrapMsg <| \(Config { delay }) -> update Unhover
 
 
 delay : Time -> Config msg model -> Config msg model
